@@ -1,0 +1,51 @@
+// All Nadura Supabase requests go through the Vite proxy at /nadura/* — the proxy
+// injects the service key server-side, so no key is present in the browser.
+const BASE = '/nadura/rest/v1'
+
+// Fetch rows for a PostgREST path (e.g. "orders?select=order_date,test_price&limit=2000").
+export async function rows(path) {
+  const res = await fetch(`${BASE}/${path}`, { headers: { Accept: 'application/json' } })
+  if (!res.ok) {
+    let msg = res.statusText
+    try { msg = (await res.json()).message || msg } catch (_) { /* ignore */ }
+    throw new Error(`${res.status}: ${msg}`)
+  }
+  return res.json()
+}
+
+// Fetch ALL rows for a query, paging past PostgREST's 1000-row cap via Range.
+export async function rowsAll(table, query) {
+  const PAGE = 1000
+  const out = []
+  let from = 0
+  for (;;) {
+    const res = await fetch(`${BASE}/${table}?${query}`, {
+      headers: {
+        Accept: 'application/json',
+        'Range-Unit': 'items',
+        Range: `${from}-${from + PAGE - 1}`,
+        Prefer: 'count=exact',
+      },
+    })
+    if (!res.ok && res.status !== 206) throw new Error(`${res.status} paging ${table}`)
+    const batch = await res.json()
+    out.push(...batch)
+    const total = parseInt((res.headers.get('content-range') || '/0').split('/').pop(), 10) || 0
+    from += batch.length
+    if (!batch.length || batch.length < PAGE || (total && from >= total)) break
+  }
+  return out
+}
+
+// Exact row count via PostgREST's Content-Range header (cheap; returns no rows).
+// `filters` is a raw PostgREST filter string, e.g. "current_stage=eq.Active".
+export async function count(table, filters = '') {
+  const url = `${BASE}/${table}?select=id${filters ? '&' + filters : ''}`
+  const res = await fetch(url, {
+    headers: { Prefer: 'count=exact', 'Range-Unit': 'items', Range: '0-0' },
+  })
+  // PostgREST returns 206 Partial Content for a ranged request — that's fine.
+  if (!res.ok && res.status !== 206) throw new Error(`${res.status} counting ${table}`)
+  const cr = res.headers.get('content-range') || '/0'
+  return parseInt(cr.split('/').pop(), 10) || 0
+}
