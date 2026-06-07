@@ -1,6 +1,11 @@
-// All Nadura Supabase requests go through the Vite proxy at /nadura/* — the proxy
-// injects the service key server-side, so no key is present in the browser.
-const BASE = '/nadura/rest/v1'
+// Nadura Supabase requests are proxied so the service key never reaches the browser.
+//   • dev  — the Vite server proxy at /nadura/* (vite.config.js) injects the key.
+//   • prod — set VITE_NADURA_FEED_URL to the deployed `nadura-feed` edge function
+//            (e.g. https://<ref>.functions.supabase.co/nadura-feed). It appends the
+//            /rest/v1 segment itself, so point the var at the function root.
+// Default keeps the dev proxy path so `vite dev` works with no extra config.
+const FEED = import.meta.env.VITE_NADURA_FEED_URL
+const BASE = FEED ? FEED.replace(/\/$/, '') : '/nadura/rest/v1'
 
 // Fetch rows for a PostgREST path (e.g. "orders?select=order_date,test_price&limit=2000").
 export async function rows(path) {

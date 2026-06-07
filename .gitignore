@@ -4,3 +4,5 @@ dist
 *.local
 vite_out.txt
 vite_err.txt
+
+supabase/.temp
